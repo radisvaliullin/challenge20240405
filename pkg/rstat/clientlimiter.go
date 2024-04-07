@@ -47,9 +47,9 @@ func (cl *ClientLimiter) run() {
 	}
 }
 
-func (cl *ClientLimiter) SubredditNew(after, before string) (Resp, error) {
+func (cl *ClientLimiter) SubredditNew(after string) (Resp, error) {
 	<-cl.nextReq
-	return cl.client.SubredditNew(after, before)
+	return cl.client.SubredditNew(after)
 }
 
 func (cl *ClientLimiter) GetTotalReqCnt() int {

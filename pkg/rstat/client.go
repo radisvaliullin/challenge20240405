@@ -15,7 +15,9 @@ import (
 var _ IClient = (*Client)(nil)
 
 type IClient interface {
-	SubredditNew(string, string) (Resp, error)
+	// Requests posts by 100 items
+	// after is item id for request next 100 items after id
+	SubredditNew(after string) (Resp, error)
 	GetTotalReqCnt() int
 }
 
@@ -43,19 +45,18 @@ func NewClient(config ClientConfig) *Client {
 	return cln
 }
 
-func (c *Client) SubredditNew(after, before string) (Resp, error) {
-	return c.subredditNew(after, before, "")
+func (c *Client) SubredditNew(after string) (Resp, error) {
+	return c.subredditNew(after, "", "")
 }
 
 func (c *Client) subredditNew(after, before, limit string) (Resp, error) {
 
 	resp := Resp{}
 
-	// config
+	// query params
 	if limit == "" {
 		limit = "100"
 	}
-
 	vals := url.Values{}
 	if len(after) != 0 {
 		vals.Set("after", after)
@@ -67,12 +68,14 @@ func (c *Client) subredditNew(after, before, limit string) (Resp, error) {
 		vals.Set("limit", limit)
 	}
 
+	// build url
 	reqURL := url.URL{
 		Scheme:   "https",
 		Host:     "oauth.reddit.com",
 		Path:     fmt.Sprintf("r/%s/new", c.config.Subreddit),
 		RawQuery: vals.Encode(),
 	}
+	// build request
 	req, err := http.NewRequest("GET", reqURL.String(), nil)
 	if err != nil {
 		log.Fatalf("client: new request build error: %v", err)
@@ -113,6 +116,7 @@ func (c *Client) subredditNew(after, before, limit string) (Resp, error) {
 		return resp, err
 	}
 
+	// decode response
 	err = json.NewDecoder(httpRes.Body).Decode(&resp.Payload)
 	if err != nil {
 		log.Printf("client: response decode error: %v", err)
