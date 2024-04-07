@@ -10,4 +10,4 @@ go run cmd/rstat/main.go
 export RSTAT_TOKEN="reddit_app_token"
 export RSTAT_SUBREDDIT="AskReddit"
 ```
-Set `RSTAT_SUBREDDIT` env var without `r` prefix.
+Set `RSTAT_SUBREDDIT` env var without `r/` prefix.
