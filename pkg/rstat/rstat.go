@@ -137,11 +137,17 @@ func (s *RStat) updatePosts(posts []PostData) {
 	for _, postData := range posts {
 		s.posts.Posts[postData.Data.Name] = postData.Data
 	}
+	// for debug
+	// fmt.Printf("update posts: %+v\n", posts)
 }
 
 func (s *RStat) updatePostsStat() {
 	s.postsMx.Lock()
 	defer s.postsMx.Unlock()
+	// reset
+	s.posts.MostVotedPost = Post{}
+	s.posts.UserWithMostPosts = ""
+	s.posts.usersPostsCnt = map[string]int{}
 	//
 	for _, post := range s.posts.Posts {
 		if post.Ups > s.posts.MostVotedPost.Ups {
@@ -153,17 +159,19 @@ func (s *RStat) updatePostsStat() {
 			s.posts.UserWithMostPosts = post.Author
 		}
 	}
+	// for debug
+	// fmt.Printf("update posts stat: %+v\n", s.posts)
 }
 
 func (s *RStat) printStat() {
 	fmt.Println("Stat:")
-	spaces := "       "
-	fmt.Println(spaces, "total requests - ", s.cln.GetTotalReqCnt())
-	fmt.Println(spaces, "num simult - ", atomic.LoadInt64(&s.numSimultFetch))
+	spaces := "        "
+	fmt.Printf("%stotal requests - %v\n", spaces, s.cln.GetTotalReqCnt())
+	fmt.Printf("%snum simult - %v\n", spaces, atomic.LoadInt64(&s.numSimultFetch))
 	s.postsMx.Lock()
 	mostVoted := s.posts.MostVotedPost
 	maxPostUser := s.posts.UserWithMostPosts
 	s.postsMx.Unlock()
-	fmt.Println(spaces, "most voted post - ", mostVoted)
-	fmt.Println(spaces, "user with most posts - ", maxPostUser)
+	fmt.Printf("%smost voted post - %+v\n", spaces, mostVoted)
+	fmt.Printf("%suser with most posts - %v\n", spaces, maxPostUser)
 }
