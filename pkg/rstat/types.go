@@ -6,9 +6,9 @@ type Resp struct {
 }
 
 type Header struct {
-	Used      string
-	Remaining string
-	Reset     string
+	Used      int
+	Remaining int
+	Reset     int
 }
 
 type Payload struct {

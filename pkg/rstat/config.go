@@ -3,7 +3,6 @@ package rstat
 import (
 	"fmt"
 	"os"
-	"time"
 )
 
 const (
@@ -13,8 +12,6 @@ const (
 
 type Config struct {
 	Client ClientConfig
-
-	PereodicReqDur time.Duration
 }
 
 func GetConfig() (Config, error) {
@@ -33,11 +30,6 @@ func GetConfig() (Config, error) {
 		Token:     token,
 		Subreddit: subreddit,
 	}
-
-	// RStat Config
-	// can make 600 request per 600 second (window)
-	// 610/600 make little bit less requests
-	conf.PereodicReqDur = 610 / 600 * time.Second
 
 	return conf, nil
 }

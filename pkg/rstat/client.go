@@ -7,8 +7,17 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
+	"sync/atomic"
 	"time"
 )
+
+var _ IClient = (*Client)(nil)
+
+type IClient interface {
+	SubredditNew(string, string) (Resp, error)
+	GetTotalReqCnt() int
+}
 
 type ClientConfig struct {
 	Token     string
@@ -19,6 +28,9 @@ type Client struct {
 	config ClientConfig
 
 	cln *http.Client
+
+	// requests total count, use atomic
+	totalReqCnt uint64
 }
 
 func NewClient(config ClientConfig) *Client {
@@ -32,11 +44,17 @@ func NewClient(config ClientConfig) *Client {
 }
 
 func (c *Client) SubredditNew(after, before string) (Resp, error) {
+	return c.subredditNew(after, before, "")
+}
+
+func (c *Client) subredditNew(after, before, limit string) (Resp, error) {
 
 	resp := Resp{}
 
 	// config
-	limit := "100"
+	if limit == "" {
+		limit = "100"
+	}
 
 	vals := url.Values{}
 	if len(after) != 0 {
@@ -69,12 +87,16 @@ func (c *Client) SubredditNew(after, before string) (Resp, error) {
 		return Resp{}, err
 	}
 	defer httpRes.Body.Close()
+	atomic.AddUint64(&c.totalReqCnt, 1)
 
 	// handle header
+	used, _ := strconv.Atoi(httpRes.Header.Get("x-ratelimit-used"))
+	remaining, _ := strconv.Atoi(httpRes.Header.Get("x-ratelimit-remaining"))
+	reset, _ := strconv.Atoi(httpRes.Header.Get("x-ratelimit-reset"))
 	resp.Header = Header{
-		Used:      httpRes.Header.Get("x-ratelimit-used"),
-		Remaining: httpRes.Header.Get("x-ratelimit-remaining"),
-		Reset:     httpRes.Header.Get("x-ratelimit-reset"),
+		Used:      used,
+		Remaining: remaining,
+		Reset:     reset,
 	}
 
 	// error response
@@ -98,4 +120,12 @@ func (c *Client) SubredditNew(after, before string) (Resp, error) {
 	}
 
 	return resp, nil
+}
+
+func (c *Client) ping() (Resp, error) {
+	return c.subredditNew("", "", "1")
+}
+
+func (c *Client) GetTotalReqCnt() int {
+	return int(atomic.LoadUint64(&c.totalReqCnt))
 }

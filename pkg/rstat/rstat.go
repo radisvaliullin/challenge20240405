@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -14,7 +15,8 @@ func Main() {
 		log.Fatalf("rstat: get config error, %v", err)
 	}
 	cln := NewClient(conf.Client)
-	rstat := New(conf, cln)
+	clnLimiter := NewClientLimiter(cln)
+	rstat := New(conf, clnLimiter)
 
 	if err = rstat.Run(); err != nil {
 		log.Printf("rstat: run error, %v", err)
@@ -24,15 +26,18 @@ func Main() {
 type RStat struct {
 	config Config
 
-	cln *Client
+	cln IClient
+
+	// just for testing
+	// atomic
+	numSimultFetch int64
 
 	//
-	mx          sync.Mutex
-	totalReqCnt int
-	lastHandle  float64
+	mx        sync.Mutex
+	lastStart float64
 }
 
-func New(config Config, cln *Client) *RStat {
+func New(config Config, cln IClient) *RStat {
 	s := &RStat{
 		config: config,
 		cln:    cln,
@@ -43,71 +48,106 @@ func New(config Config, cln *Client) *RStat {
 func (s *RStat) Run() error {
 	fmt.Printf("subreddit %s, new posts:\n", s.config.Client.Subreddit)
 
-	// init
+	// init lastStart
 	res, err := s.cln.SubredditNew("", "")
 	if err != nil {
-		log.Printf("rstat: request error: %v", err)
+		log.Printf("rstat: request error, %v", err)
+		return err
 	}
 	s.mx.Lock()
 	if len(res.Payload.Data.Children) > 0 {
-		s.lastHandle = res.Payload.Data.Children[0].Data.Created
+		s.lastStart = res.Payload.Data.Children[0].Data.Created
 	}
 	s.mx.Unlock()
 
-	reqTickDur := s.config.PereodicReqDur
-	reqTick := time.NewTicker(reqTickDur)
 	statTick := time.NewTicker(time.Second * 10)
-
 	for {
 		select {
-		case <-reqTick.C:
-
-			go s.updatePosts()
-
+		default:
+			s.fetchNewPosts()
 		case <-statTick.C:
-			func() {
-				s.mx.Lock()
-				defer s.mx.Unlock()
-				fmt.Println("stat:", s.totalReqCnt)
-			}()
+			fmt.Println("stat: total requests - ", s.cln.GetTotalReqCnt())
+			fmt.Println("stat: num simult - ", atomic.LoadInt64(&s.numSimultFetch))
 		}
 	}
 }
 
-func (s *RStat) updatePosts() {
+func (s *RStat) fetchNewPosts() {
+	atomic.AddInt64(&s.numSimultFetch, 1)
+	defer func() {
+		atomic.AddInt64(&s.numSimultFetch, -1)
+	}()
+
 	res, err := s.cln.SubredditNew("", "")
 	if err != nil {
-		log.Printf("rstat: request error: %v", err)
+		log.Printf("rstat: fetch new posts error, %v", err)
 		return
 	}
 
-	s.mx.Lock()
-	defer s.mx.Unlock()
-
-	s.totalReqCnt++
+	// no data
 	if len(res.Payload.Data.Children) == 0 {
 		return
 	}
 
-	var start = res.Payload.Data.Children[0].Data.Created
+	// get time range and update lastStart
+	var start float64
 	var end float64
-	if start > s.lastHandle {
-		end = s.lastHandle
-		s.lastHandle = start
+	// fetch posts time range [start, end)
+	start = res.Payload.Data.Children[0].Data.Created
+	// update lastStart time
+	s.mx.Lock()
+	if start > s.lastStart {
+		end = s.lastStart
+		s.lastStart = start
 	} else {
 		// no new data, return
+		s.mx.Unlock()
 		return
 	}
+	s.mx.Unlock()
 
-	newItemCnt := 0
-	for _, child := range res.Payload.Data.Children {
-		if child.Data.Created <= end {
+	go s.fetchPostsForRange(start, end, res)
+}
+
+func (s *RStat) fetchPostsForRange(start, end float64, firstPage Resp) {
+	atomic.AddInt64(&s.numSimultFetch, 1)
+	defer func() {
+		atomic.AddInt64(&s.numSimultFetch, -1)
+	}()
+
+	res := firstPage
+	for {
+		for _, child := range res.Payload.Data.Children {
+			if child.Data.Created > start {
+				continue
+			}
+			if child.Data.Created <= end {
+				// we handled all items for timerange [start, end)
+				return
+			}
+			fmt.Printf("new post: %+v", child)
+		}
+
+		// handle next page
+		after := res.Payload.Data.After
+		if len(after) == 0 {
+			return
+		}
+
+		//
+		for {
+			var err error
+			res, err = s.cln.SubredditNew(after, "")
+			if err != nil {
+				log.Printf("rstat: fetch posts error, %v", err)
+				continue
+			}
 			break
 		}
-		newItemCnt++
-		fmt.Printf("new post: %+v", child)
-	}
-	if newItemCnt == 100 {
-		fmt.Println("warning: you missed handle some of posts")
+
+		// no data
+		if len(res.Payload.Data.Children) == 0 {
+			return
+		}
 	}
 }
