@@ -6,7 +6,8 @@ const (
 	// requests per 10 min
 	DefaultReqLimit = 600
 	// 10 min
-	DefaultTimeWindow = time.Second * 60 * 10
+	DefaultTimeWindow      = time.Second * 60 * 10
+	DefaultTimeWindowDelta = time.Second * 20
 )
 
 var _ IClient = (*ClientLimiter)(nil)
@@ -27,20 +28,20 @@ func NewClientLimiter(client *Client) *ClientLimiter {
 }
 
 func (cl *ClientLimiter) run() {
-	// make ping to get request limit stats
+	// make ping to get request limit info
 	res, _ := cl.client.ping()
 	reqLimit := res.Header.Used + res.Header.Remaining
 	if reqLimit == 0 {
 		reqLimit = DefaultReqLimit
 	}
 
-	// delta need to make little bit less request than limit
-	delta := time.Second * 20
-	nextReqDur := (DefaultTimeWindow + delta) / time.Duration(reqLimit)
+	// delta need to make little bit less request than limit to escape errors
+	nextReqDur := (DefaultTimeWindow + DefaultTimeWindowDelta) / time.Duration(reqLimit)
 	reqTick := time.NewTicker(nextReqDur)
 
-	// to unlock first request without delay
+	// to unlock first request without delay set first signal
 	cl.nextReq <- struct{}{}
+	//
 	for {
 		<-reqTick.C
 		cl.nextReq <- struct{}{}

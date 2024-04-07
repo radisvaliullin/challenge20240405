@@ -112,22 +112,25 @@ func (s *RStat) fetchPosts(end float64, after string, subFetchChan chan SubFetch
 
 	// handle posts
 	for idx, post := range res.Payload.PostsData.Posts {
+		// handle until end
 		if post.Data.Created <= end {
-			// handle until end
-			// if end update posts and return
+			// update posts before return
 			s.updatePosts(res.Payload.PostsData.Posts[:idx])
+			// update stat when reach last post
 			s.updatePostsStat()
 			return
 		}
 		// print for debug
 		// fmt.Printf("new post: %+v\n", post.Data)
 	}
+	// update posts before return
 	s.updatePosts(res.Payload.PostsData.Posts)
 
 	// if need request next page
 	after = res.Payload.PostsData.After
 	if len(after) == 0 {
 		// no next page
+		// update stat when reach last post
 		s.updatePostsStat()
 		return
 	}
