@@ -71,6 +71,13 @@ func (s *RStat) Run() error {
 	// stat print ticker
 	statTick := time.NewTicker(time.Second * 5)
 
+	// log stat
+	go func() {
+		for range statTick.C {
+			s.printStat()
+		}
+	}()
+
 	// fetch posts
 	for {
 		select {
@@ -79,8 +86,6 @@ func (s *RStat) Run() error {
 			s.fetchPosts(s.firstPostStart, "", nextSubFetch)
 		case subFetch := <-nextSubFetch:
 			go s.fetchPosts(s.firstPostStart, subFetch.After, nextSubFetch)
-		case <-statTick.C:
-			s.printStat()
 		}
 	}
 }
